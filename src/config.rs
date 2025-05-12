@@ -1,32 +1,9 @@
 use std::collections::HashMap;
 use anyhow::{Ok, Result};
-use reqwest::{header::HeaderMap, Method};
 use tokio::fs;
-use url::Url;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
-use crate::ExtraAgrs;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RequestProfile {
-
-    #[serde(with = "http_serde::method", default)]
-    pub method: Method,
-
-    pub url: Url,
-
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub params: Option<Value>,
-
-    #[serde(skip_serializing_if = "HeaderMap::is_empty"
-    , with = "http_serde::header_map"
-    , default)]
-    pub headers: HeaderMap,
-
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub body: Option<Value>,
-}
+use crate::{ExtraAgrs, RequestProfile};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResponseProfile {
