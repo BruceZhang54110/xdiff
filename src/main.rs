@@ -28,6 +28,8 @@ async fn run(args: RunArgs) -> Result<()> {
     })?;
 
     let extra_args = args.extra_params.into();
-    let diff_result = profile.diff(extra_args);
+    println!("extra_args: {:?}", extra_args);
+    println!("profile: {:?}", profile);
+    profile.diff(extra_args).await?;
     Ok(())
 }

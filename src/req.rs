@@ -1,12 +1,12 @@
-use std::{any, str::FromStr};
-
-use anyhow::{Ok, Result};
+use std::str::FromStr;
+use tokio::time::Duration;
+use anyhow::{anyhow, Ok, Result};
 use serde::{Deserialize, Serialize};
 use url::Url;
 use reqwest::{header::{HeaderMap, HeaderName, HeaderValue}, Client, Method, Response};
 use serde_json::{json, Value};
 use http::header::CONTENT_TYPE;
-use crate::ExtraAgrs;
+use crate::{ExtraAgrs, ResponseProfile};
 
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -30,16 +30,27 @@ pub struct RequestProfile {
 }
 
 
+#[derive(Debug)]
+pub struct ResponseExt(Response);
+
+
 impl RequestProfile {
 
-    pub async fn send(&self, args: &ExtraAgrs) -> Result<Response> {
-        let request_builder = Client::new().request(self.method.clone(), self.url.clone());
+    pub async fn send(&self, args: &ExtraAgrs) -> Result<ResponseExt> {
 
+        let (headers, query, body) = self.generate(args).expect("generate error");
 
+        let client = Client::new();
 
-        let (headers, query, body) = self.generate(args)?;
-
-        todo!()
+        let req = client.request(self.method.clone(), self.url.clone())
+        .query(&query)
+        .headers(headers)
+        .body(body)
+        .timeout(Duration::from_secs(10))
+        .build()?;
+        println!("start execute");
+        let res = client.execute(req).await?;
+        Ok(ResponseExt(res))
     }
 
 
@@ -71,35 +82,102 @@ impl RequestProfile {
         for (k, v) in &args.body {
             body[k] = v.parse()?
         }
-        // let content_type_value = headers.get(CONTENT_TYPE);
-        match headers.get(CONTENT_TYPE) {
-            Some(content_type_value) => {
-                let content_type_value = content_type_value.to_str().map_err(|_| anyhow::anyhow!("Invalid Content-Type"))?;
-                match content_type_value {
-                    "application/json" => {
-                        // 处理 JSON 格式的请求体
-                        let json_body = serde_json::to_string(&body)?;
-                        Ok((headers, query, json_body))
-                    }
-                    "application/x-www-form-urlencoded" => {
-                        // 处理 x-www-form-urlencoded 格式的请求体
-                        let form_body = serde_urlencoded::to_string(&body)?;
-                        Ok((headers, query, form_body))
-                    }
-                    "text/plain" => {
-                        // 处理纯文本格式的请求体
-                        let text_body = body.to_string();
-                        Ok((headers, query, text_body))
-                    }
-                    _ => Err(anyhow::anyhow!("Unsupported Content-Type")),
-                    
-                }
+        let content_type_value = get_content_type(&headers);
+        match content_type_value.as_deref() {
+            Some("application/json") => {
+                // 处理 JSON 格式的请求体
+                let json_body = serde_json::to_string(&body)?;
+                Ok((headers, query, json_body))
+            }
+            Some("application/x-www-form-urlencoded") | Some("multipart/form-data") => {
+                // 处理 x-www-form-urlencoded 格式的请求体
+                let form_body = serde_urlencoded::to_string(&body)?;
+                Ok((headers, query, form_body))
             }
             _ => Err(anyhow::anyhow!("Unsupported Content-Type")),
+                    
         }
-
-        //Ok((headers, query, body))
-
     }
 
+}
+
+
+impl ResponseExt {
+
+    pub async fn filter_text(self, profile: &ResponseProfile) -> Result<String> {
+        let res = self.0;
+        let mut ouptput = String::new();
+        println!("start filter text");
+        ouptput.push_str(&format!("response result: {:?} {}\r\n", res.version(), res.status()));
+        
+        match res.status() {
+            reqwest::StatusCode::OK => {
+                ouptput.push_str("response is ok\r\n");
+            }
+            _ => return Err(anyhow!("url is :{}, response is not ok, status code is {}", res.url(), res.status())),
+            
+        }
+
+        let headers = res.headers();
+        for (header_key, header_value) in headers.iter() {
+            if !profile.skip_headers.iter().any(|sh| sh == header_key.as_str()) {
+                ouptput.push_str(&format!("{}: {:?}\r", header_key, header_value));
+            }
+        }
+        println!("start filter body");
+
+        ouptput.push_str("\n");
+        let content_type =  get_content_type(&headers);
+
+        let text = res.text().await?;
+        match content_type.as_deref() {
+            Some("application/json") => {
+                let text = filter_json(&text, &profile.skip_body)?;
+                ouptput.push_str(&text);
+            }
+            _ => {
+                ouptput.push_str(&text);
+            }
+        }
+        println!("start filter json");
+        let mut json: serde_json::Value = serde_json::from_str(&text).unwrap_or_else(|err| {
+            println!("Failed to parse JSON: {}, error is :{} ", &text, err);
+            json!({})
+        });
+        for key in &profile.skip_body {
+            json[key] = json!(null);
+        }
+        println!("finish filter json");
+        Ok(ouptput)
+    }
+
+
+}
+
+fn filter_json(text: &str, skip_body: &[String]) -> Result<String> {
+    let mut json: serde_json::Value = serde_json::from_str(text)?;
+
+    match json {
+        Value::Object(ref mut obj) => {
+            for key in skip_body {
+                obj.remove(key);
+                
+            }
+        }
+        _ => 
+            // TODO: 处理其他类型的 JSON
+            {}
+    }
+
+    for key in skip_body {
+        json[key] = json!(null);
+    }
+    Ok(serde_json::to_string_pretty(&json)?)
+}
+
+fn get_content_type(headers: &HeaderMap) -> Option<String> {
+    headers.get(CONTENT_TYPE)
+    .map(|v| v.to_str().unwrap().split(";").next())
+    .flatten()
+    .map(|v| v.to_string())
 }

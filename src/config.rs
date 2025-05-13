@@ -45,9 +45,15 @@ impl DiffConfig {
 }
 
 impl DiffProfile {
-    pub fn diff(&self, args: ExtraAgrs) -> Result<String> {
-        println!("profile: {:?}", self);
-        println!("args: {:?}", args);
-        Ok("".to_string())
+    pub async fn diff(&self, args: ExtraAgrs) -> Result<String> {
+        println!("start diff");
+        let res1 = self.req1.send(&args).await?;
+        let res2 = self.req2.send(&args).await?;
+
+        let text1 = res1.filter_text(&self.res).await?;
+        //let text2 = res2.filter_text(&self.res).await?;
+
+        println!("text1: {}", text1);
+        Ok("value".to_string())
     }
 }
