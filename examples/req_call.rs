@@ -12,6 +12,7 @@ async fn main() -> Result<(), reqwest::Error> {
 
     let response = client
         .get("https://jsonplaceholder.typicode.com/todos/1?a=100")
+        //.get("https://wwww.baidu.com")
         .timeout(Duration::from_secs(10))
         .send()
         .await?;

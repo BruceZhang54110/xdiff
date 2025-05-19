@@ -3,6 +3,7 @@ use core::panic;
 use clap::Parser;
 use xdiff::{cli::{Action, Args, RunArgs}, DiffConfig};
 use anyhow::{anyhow, Ok, Result};
+use std::io::Write;
 
 
 /// cargo run -- run -p rust -c fixtures/test.yml -e a=100
@@ -30,6 +31,9 @@ async fn run(args: RunArgs) -> Result<()> {
     let extra_args = args.extra_params.into();
     println!("extra_args: {:?}", extra_args);
     println!("profile: {:?}", profile);
-    profile.diff(extra_args).await?;
+    let output = profile.diff(extra_args).await?;
+    let stdout = std::io::stdout();
+    let mut stdout = stdout.lock();
+    write!(stdout, "{}", output)?;
     Ok(())
 }

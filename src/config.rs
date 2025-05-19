@@ -3,7 +3,7 @@ use anyhow::{Ok, Result};
 use tokio::fs;
 use serde::{Deserialize, Serialize};
 
-use crate::{ExtraAgrs, RequestProfile};
+use crate::{utils::diff_text, ExtraAgrs, RequestProfile};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResponseProfile {
@@ -51,9 +51,8 @@ impl DiffProfile {
         let res2 = self.req2.send(&args).await?;
 
         let text1 = res1.filter_text(&self.res).await?;
-        //let text2 = res2.filter_text(&self.res).await?;
+        let text2 = res2.filter_text(&self.res).await?;
 
-        println!("text1: {}", text1);
-        Ok("value".to_string())
+        Ok(diff_text(&text1, &text2)?)
     }
 }

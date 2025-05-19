@@ -18,13 +18,17 @@ rust:
       - x-amz-cf-id
 todo:
   req1:
-    url: https://jsonplaceholder.typicode.com/todos/1
+    method: GET
+    url: http://127.0.0.1:8080/todos/1
     params:
-      a: 100
   req2:
-    url: https://jsonplaceholder.typicode.com/todos/2
+    method: GET
+    url: http://127.0.0.1:8080/todos/2
     params:
-      c: 200
+    headers:
+      aaa: hello
   res:
     skip_headers:
       - report-to
+    skip_body:
+      - id

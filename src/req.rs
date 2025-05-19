@@ -1,12 +1,13 @@
-use std::str::FromStr;
+use std::{str::FromStr};
 use tokio::time::Duration;
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{Ok, Result};
 use serde::{Deserialize, Serialize};
 use url::Url;
 use reqwest::{header::{HeaderMap, HeaderName, HeaderValue}, Client, Method, Response};
 use serde_json::{json, Value};
 use http::header::CONTENT_TYPE;
 use crate::{ExtraAgrs, ResponseProfile};
+use std::fmt::Write;
 
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -41,15 +42,15 @@ impl RequestProfile {
         let (headers, query, body) = self.generate(args).expect("generate error");
 
         let client = Client::new();
-
+        println!("client header:{:?}", headers);
         let req = client.request(self.method.clone(), self.url.clone())
         .query(&query)
         .headers(headers)
         .body(body)
-        .timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(5))
         .build()?;
         println!("start execute");
-        let res = client.execute(req).await?;
+        let res = client.execute(req).await.unwrap();
         Ok(ResponseExt(res))
     }
 
@@ -66,7 +67,7 @@ impl RequestProfile {
         for (k, v) in &args.headers {
             headers.insert(HeaderName::from_str(k)?, HeaderValue::from_str(v)?);
         }
-
+        println!("header insert after args:{:?}", headers);
         // 请求头中没有设置 Content-Type 时，默认设置为 application/json
         if !headers.contains_key(CONTENT_TYPE) {
             headers.insert(
@@ -106,37 +107,30 @@ impl ResponseExt {
 
     pub async fn filter_text(self, profile: &ResponseProfile) -> Result<String> {
         let res = self.0;
-        let mut ouptput = String::new();
+        let mut output = String::new();
         println!("start filter text");
-        ouptput.push_str(&format!("response result: {:?} {}\r\n", res.version(), res.status()));
+        write!(&mut output, "{:?}{}\r", res.version(), res.status())?;
         
-        match res.status() {
-            reqwest::StatusCode::OK => {
-                ouptput.push_str("response is ok\r\n");
-            }
-            _ => return Err(anyhow!("url is :{}, response is not ok, status code is {}", res.url(), res.status())),
-            
-        }
 
         let headers = res.headers();
+        println!("res headers:{:?}", headers);
         for (header_key, header_value) in headers.iter() {
             if !profile.skip_headers.iter().any(|sh| sh == header_key.as_str()) {
-                ouptput.push_str(&format!("{}: {:?}\r", header_key, header_value));
+                write!(&mut output, "{}: {:?}\n", header_key, header_value)?;
             }
         }
         println!("start filter body");
-
-        ouptput.push_str("\n");
+        write!(&mut output, "\n")?;
         let content_type =  get_content_type(&headers);
 
         let text = res.text().await?;
         match content_type.as_deref() {
             Some("application/json") => {
                 let text = filter_json(&text, &profile.skip_body)?;
-                ouptput.push_str(&text);
+                write!(&mut output, "{}", text)?;
             }
             _ => {
-                ouptput.push_str(&text);
+                write!(&mut output, "{}", text)?;
             }
         }
         println!("start filter json");
@@ -147,8 +141,8 @@ impl ResponseExt {
         for key in &profile.skip_body {
             json[key] = json!(null);
         }
-        println!("finish filter json");
-        Ok(ouptput)
+        println!("finish filter json:{}", output);
+        Ok(output)
     }
 
 

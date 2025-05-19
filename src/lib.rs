@@ -2,6 +2,7 @@ pub mod config;
 pub use config::{DiffConfig, DiffProfile, ResponseProfile};
 pub mod cli;
 pub mod req;
+pub mod utils;
 
 pub use req::RequestProfile;
 
